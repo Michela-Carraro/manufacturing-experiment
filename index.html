@@ -21,7 +21,7 @@ window.onerror=m=>{ERR=m;banner()};
 if(!BAD)firebase.initializeApp(CFG);
 const db=BAD?null:firebase.database(),TS=BAD?0:firebase.database.ServerValue.TIMESTAMP;
 if(db)db.ref('.info/connected').on('value',s=>{CONN=s.val();banner()});
-const U=new URLSearchParams(location.search),T=U.get('team')||'T01',R=U.get('role'),PID=U.get('pid')||'';
+const U=new URLSearchParams(location.search),T=U.get('team')||'T01',R=(U.get('role')||'').trim().toUpperCase(),PID=U.get('pid')||'';
 const RN={M:'Maintenance Technician',Q:'Quality Inspector',P:'Production Planner'};
 const N=10,ROUNDS=10,PEN=10000; // errors/round, rounds, wrong-answer penalty (ms)
 // 2) PLACEHOLDER CONTENT: replace ACT/CAU (or kb()) with your real error dataset
@@ -129,6 +129,9 @@ function csv(){
   });
 }
 if(U.has('admin'))admin();
-else if(!'MQP'.includes(R||'x'))document.body.innerHTML='<p>Missing or invalid ?role=M|Q|P</p>';
+else if(!['M','Q','P'].includes(R)){
+  const b=location.origin+location.pathname;
+  document.body.innerHTML='<h3>Open one of these links on each computer</h3>'+['M','Q','P'].map(k=>`<p>${RN[k]}: <a href="?team=${T}&role=${k}&pid=">${b}?team=${T}&role=${k}&pid=P001</a></p>`).join('')+`<p>Experimenter: <a href="?admin=1&team=${T}">${b}?admin=1&team=${T}</a></p>`;
+}
 else init();
 </script></body></html>
