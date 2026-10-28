@@ -1,330 +1,123 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manufacturing Team Simulation</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            display: flex;
-            gap: 20px;
-        }
-        .role-section {
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 15px;
-            flex: 1;
-        }
-        h2 {
-            color: #333;
-            text-align: center;
-        }
-        .error-list {
-            margin-top: 10px;
-        }
-        .error-item {
-            background-color: #f9f9f9;
-            border: 1px solid #eee;
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-        }
-        .error-code {
-            font-weight: bold;
-            color: #d9534f;
-        }
-        .kanban-board {
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-        }
-        .kanban-column {
-            display: flex;
-            flex-direction: column;
-            margin-bottom: 10px;
-        }
-        .kanban-card {
-            background-color: #e9ecef;
-            border: 1px solid #ccc;
-            padding: 8px;
-            margin-bottom: 5px;
-            border-radius: 4px;
-        }
-        button {
-            background-color: #5cb85c;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #4cae4c;
-        }
-        .ai-chatbot {
-            background-color: #e3f2fd;
-            border: 1px solid #2196f3;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 10px;
-        }
-        .chat-input {
-            width: 80%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .chat-button {
-            background-color: #2196f3;
-        }
-        .chat-response {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-    </style>
-</head>
-<body>
-    <h1>Manufacturing Team Simulation</h1>
-    <p><strong>Team:</strong> <span id="team-condition">Loading...</span> | <strong>Round:</strong> <span id="current-round">1</span>/10</p>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Factory simulation</title>
+<style>
+body{font:16px system-ui,sans-serif;margin:0;padding:16px;background:#f6f6f4;color:#222}
+.card{background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px;margin:8px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>.card{flex:1;min-width:150px}
+button,select,input{font:inherit;padding:6px 10px}
+.me{border:2px solid #2a6}.big{font-size:1.4em;font-weight:600}.mut{color:#777}
+</style></head><body>
+<div id="app"><div id="kan" class="row"></div><div id="task" class="card"></div><div id="tool" class="card"></div><div id="help"></div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+// 1) PASTE YOUR FIREBASE CONFIG HERE
+const CFG={apiKey:"YOUR_KEY",authDomain:"YOUR.firebaseapp.com",databaseURL:"https://YOUR-default-rtdb.europe-west1.firebasedatabase.app",projectId:"YOUR"};
+firebase.initializeApp(CFG);
+const db=firebase.database(),TS=firebase.database.ServerValue.TIMESTAMP;
+const U=new URLSearchParams(location.search),T=U.get('team')||'T01',R=U.get('role'),PID=U.get('pid')||'';
+const RN={M:'Maintenance Technician',Q:'Quality Inspector',P:'Production Planner'};
+const N=10,ROUNDS=10,PEN=10000; // errors/round, rounds, wrong-answer penalty (ms)
+// 2) PLACEHOLDER CONTENT: replace ACT/CAU (or kb()) with your real error dataset
+const ACT=['Reset controller','Replace sensor','Recalibrate axis','Flush coolant line','Tighten fixture','Replace filter','Update PLC firmware','Re-seat connector','Lubricate spindle','Adjust feed rate','Restart conveyor','Replace belt'];
+const CAU=['Sensor drift','Worn part','Loose fitting','Contamination','Firmware fault','Overheating','Misalignment','Supply fault','Wear','Parameter error','Jam','Fatigue'];
+const num=c=>parseInt(String(c).replace(/\D/g,''))-100;
+const mk=(r,k,j)=>'E-'+(100+'MQP'.indexOf(r)*100+k*10+j);
+const kb=c=>{const n=num(c);return{cause:CAU[(n*7)%12],act:ACT[(n*5+3)%12],conf:60+(n*13)%40}};
+const opts=c=>{const a=(num(c)*5+3)%12;const l=[0,2,5,7,10].map(o=>ACT[(a+o)%12]);l.sort(()=>Math.random()-.5);l.push('Ignore this error');return l};
+let S={team:{},idx:0,round:0,ok:0,tot:0,t0:0,rs:0,opts:[],cur:'',lock:false,found:null};
+const $=id=>document.getElementById(id);
+const log=(type,d)=>db.ref('events/'+T).push(Object.assign({ts:TS,cts:Date.now(),pid:PID,role:R,type,round:S.round},d||{}));
 
-    <div class="container">
-        <!-- Maintenance Technician -->
-        <div class="role-section">
-            <h2>🔧 Maintenance Technician</h2>
-            <div class="error-list" id="maintenance-errors">
-                <!-- Errors will be loaded here -->
-            </div>
-            <div class="ai-chatbot" id="ai-chatbot-maintenance" style="display: none;">
-                <h3>AI Chatbot</h3>
-                <input type="text" class="chat-input" id="ai-input-maintenance" placeholder="Enter error code or describe issue...">
-                <button class="chat-button" onclick="sendToAI('maintenance')">Get AI Recommendation</button>
-                <div class="chat-response" id="ai-response-maintenance"></div>
-            </div>
-            <button onclick="startNewRound()">Next Round</button>
-        </div>
+// ---------- participant ----------
+function init(){
+  tool();kan();help();task();
+  db.ref('teams/'+T).on('value',s=>{
+    const v=s.val()||{};S.team=v;
+    if(v.started&&v.round&&v.round!==S.round){
+      S.round=v.round;S.idx=0;S.ok=0;S.rs=Date.now();
+      if(S.round<=ROUNDS){log('round_start');next()}
+    }
+    maybeAdvance();kan();help();task();tool();
+  });
+}
+function next(){
+  S.lock=false;
+  if(S.idx>=N){S.cur='';log('round_end',{ms:Date.now()-S.rs});return}
+  S.cur=mk(R,S.round-1,S.idx);S.opts=opts(S.cur);S.t0=Date.now();
+  log('error_shown',{code:S.cur});
+}
+function submit(){
+  const ch=$('sel').value;if(!ch||S.lock)return;
+  const ok=ch===ACT[(num(S.cur)*5+3)%12];
+  log('answer',{code:S.cur,choice:ch,correct:ok,ms:Date.now()-S.t0});
+  S.idx++;if(ok){S.ok++;S.tot++}
+  const go=()=>{db.ref(`teams/${T}/prog/${R}`).set({round:S.round,done:S.idx,tot:S.tot});next();task()};
+  if(ok)go();else{S.lock=true;task();setTimeout(go,PEN)}
+}
+function maybeAdvance(){
+  const p=S.team.prog||{},r=S.team.round;
+  if(!S.team.started||!r||r>ROUNDS)return;
+  if(['M','Q','P'].every(k=>p[k]&&p[k].round===r&&p[k].done>=N))
+    db.ref(`teams/${T}/round`).transaction(x=>x===r?r+1:x);
+}
+function look(){
+  const q=$('q').value.trim(),n=num(q);
+  const own=Math.floor(n/100)==='MQP'.indexOf(R)&&n%10===0&&S.team.bn===R; // bottleneck gap
+  const f=n>=0&&n<300&&!own;
+  S.found=f?Object.assign({q},kb(q)):{q,none:1};
+  log('lookup',{q,found:f});tool();
+}
+function ask(){if(!S.cur)return;const h=db.ref(`teams/${T}/help`).push({from:R,code:S.cur,round:S.round,status:'open',t:Date.now()});log('help_request',{code:S.cur,hid:h.key})}
+function aid(id,c){db.ref(`teams/${T}/help/${id}`).update({status:'active',helper:R,t0:Date.now()});log('help_start',{hid:id,code:c})}
+function fin(id,c,t0){db.ref(`teams/${T}/help/${id}`).update({status:'done',t1:Date.now()});log('help_end',{hid:id,code:c,ms:Date.now()-t0})}
 
-        <!-- Quality Inspector -->
-        <div class="role-section">
-            <h2>🔍 Quality Inspector</h2>
-            <div class="error-list" id="quality-errors">
-                <!-- Errors will be loaded here -->
-            </div>
-            <div class="ai-chatbot" id="ai-chatbot-quality" style="display: none;">
-                <h3>AI Chatbot</h3>
-                <input type="text" class="chat-input" id="ai-input-quality" placeholder="Enter error code or describe issue...">
-                <button class="chat-button" onclick="sendToAI('quality')">Get AI Recommendation</button>
-                <div class="chat-response" id="ai-response-quality"></div>
-            </div>
-        </div>
+function task(){
+  const t=S.team;let h;
+  if(!t.started)h='Waiting for the experimenter to start…';
+  else if(S.round>ROUNDS)h='<b class="big">Finished.</b> Please wait for instructions.';
+  else if(S.idx>=N)h=`Round ${S.round} complete. Waiting for teammates…`;
+  else if(S.lock)h='<b>Incorrect.</b> Penalty: please wait 10 seconds…';
+  else h=`<div class="mut">Round ${S.round}/${ROUNDS} · error ${S.idx+1}/${N}</div><div class="big">Alarm ${S.cur}</div><p>Select the corrective action:</p><select id="sel"><option value="">—</option>${S.opts.map(o=>`<option>${o}</option>`).join('')}</select> <button onclick="submit()">Submit</button>`;
+  $('task').innerHTML=h;
+}
+function tool(){
+  if($('q')&&document.activeElement===$('q'))return;
+  const ai=S.team.cond==='ai',f=S.found;
+  $('tool').innerHTML=`<b>${ai?'AI assistant':'Manual'}</b> <input id="q" placeholder="Error code, e.g. E-105" value="${f?f.q:''}"> <button onclick="look()">Look up</button>`+
+  (f?(f.none?'<p>Error not found.</p>':`<p>Root cause: ${f.cause}<br>Recommended action: <b>${f.act}</b>${ai?`<br>Confidence: ${f.conf}%`:''}</p>`):'');
+}
+function kan(){
+  const p=S.team.prog||{};
+  $('kan').innerHTML=['M','Q','P'].map(k=>{const x=p[k]||{};return`<div class="card ${k===R?'me':''}"><b>${RN[k]}</b>${k===R?' (you)':''}<br>Round ${S.round||0}: ${x.round===S.round?x.done||0:0}/${N} done<br>Resolved so far: ${x.tot||0}</div>`}).join('');
+}
+function help(){
+  const H=S.team.help||{};let h='<div class="card"><button onclick="ask()">Ask a teammate for help with this error</button>';
+  for(const[id,x]of Object.entries(H)){
+    if(x.status==='done')continue;
+    if(x.from===R)h+=`<p>Your request (${x.code}): ${x.status==='open'?'waiting…':'being helped by '+RN[x.helper]}</p>`;
+    else if(x.status==='open')h+=`<p>${RN[x.from]} asks for help with ${x.code} <button onclick="aid('${id}','${x.code}')">I'll help</button></p>`;
+    else if(x.helper===R)h+=`<p>Helping ${RN[x.from]} with ${x.code} <button onclick="fin('${id}','${x.code}',${x.t0})">Done helping</button></p>`;
+  }
+  $('help').innerHTML=h+'</div>';
+}
 
-        <!-- Production Planner -->
-        <div class="role-section">
-            <h2>📋 Production Planner</h2>
-            <div class="error-list" id="production-errors">
-                <!-- Errors will be loaded here -->
-            </div>
-            <div class="ai-chatbot" id="ai-chatbot-production" style="display: none;">
-                <h3>AI Chatbot</h3>
-                <input type="text" class="chat-input" id="ai-input-production" placeholder="Enter error code or describe issue...">
-                <button class="chat-button" onclick="sendToAI('production')">Get AI Recommendation</button>
-                <div class="chat-response" id="ai-response-production"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Kanban Board -->
-    <div class="kanban-board">
-        <h2>📊 Team Kanban Board</h2>
-        <div class="kanban-column">
-            <h3>Errors Resolved</h3>
-            <div id="kanban-resolved"></div>
-        </div>
-        <div class="kanban-column">
-            <h3>Current Workload</h3>
-            <div id="kanban-workload"></div>
-        </div>
-        <div class="kanban-column">
-            <h3>Team Progress</h3>
-            <div id="kanban-progress"></div>
-        </div>
-    </div>
-
-    <script>
-        // Experiment condition: Full-AI or No-AI
-        const teamCondition = new URLSearchParams(window.location.search).get('condition') || 'No-AI';
-        document.getElementById('team-condition').textContent = teamCondition;
-
-        // Error dataset (simplified for demo)
-        const errors = [
-            { code: "ALM-404", description: "High vibration in spindle", rootCause: "Worn bearing", solution: "Replace bearing" },
-            { code: "ERR-500", description: "Overheating in motor", rootCause: "Faulty cooling fan", solution: "Replace cooling fan" },
-            { code: "FAIL-202", description: "Inconsistent product dimensions", rootCause: "Misaligned caliper", solution: "Recalibrate machine" },
-            { code: "STOP-999", description: "Unexpected shutdown", rootCause: "Electrical short", solution: "Check wiring" },
-            { code: "NOISE-777", description: "Loud grinding noise", rootCause: "Loose gear", solution: "Tighten gear" },
-            { code: "LEAK-303", description: "Hydraulic fluid leak", rootCause: "Cracked hose", solution: "Replace hose" },
-            { code: "SLOW-101", description: "Reduced spindle speed", rootCause: "Clogged filter", solution: "Clean filter" },
-            { code: "JAM-888", description: "Material jam in feeder", rootCause: "Misaligned feeder", solution: "Realign feeder" },
-            { code: "ERR-404", description: "Sensor failure", rootCause: "Dirty sensor", solution: "Clean sensor" },
-            { code: "CRASH-200", description: "System crash", rootCause: "Software bug", solution: "Restart system" }
-        ];
-
-        // Current round
-        let currentRound = 1;
-        const totalRounds = 10;
-
-        // Team progress tracking
-        let teamProgress = {
-            resolved: 0,
-            workload: 10, // 10 errors per round
-            timeTaken: 0
-        };
-
-        // Initialize the experiment
-        function initializeExperiment() {
-            if (teamCondition === 'Full-AI') {
-                // Show AI chatbots for all roles
-                document.getElementById('ai-chatbot-maintenance').style.display = 'block';
-                document.getElementById('ai-chatbot-quality').style.display = 'block';
-                document.getElementById('ai-chatbot-production').style.display = 'block';
-            }
-
-            // Load errors for each role
-            loadErrors();
-            updateKanbanBoard();
-        }
-
-        // Load errors for each role
-        function loadErrors() {
-            const shuffledErrors = [...errors].sort(() => 0.5 - Math.random()).slice(0, 10);
-
-            // Assign errors to roles (with one "slow" error for each role)
-            document.getElementById('maintenance-errors').innerHTML = '';
-            document.getElementById('quality-errors').innerHTML = '';
-            document.getElementById('production-errors').innerHTML = '';
-
-            shuffledErrors.forEach((error, index) => {
-                const errorElement = document.createElement('div');
-                errorElement.className = 'error-item';
-                errorElement.innerHTML = `
-                    <div class="error-code">${error.code}</div>
-                    <div>${error.description}</div>
-                    <div>
-                        <select onchange="resolveError(this, '${error.code}')">
-                            <option value="">Select action...</option>
-                            <option value="${error.solution}">${error.solution} (Correct)</option>
-                            <option value="Recalibrate machine">Recalibrate machine</option>
-                            <option value="Replace motor">Replace motor</option>
-                            <option value="Ignore">Ignore</option>
-                        </select>
-                    </div>
-                `;
-
-                // Assign to roles (rotating for simplicity)
-                if (index % 3 === 0) {
-                    document.getElementById('maintenance-errors').appendChild(errorElement);
-                } else if (index % 3 === 1) {
-                    document.getElementById('quality-errors').appendChild(errorElement);
-                } else {
-                    document.getElementById('production-errors').appendChild(errorElement);
-                }
-            });
-        }
-
-        // Resolve an error
-        function resolveError(selectElement, errorCode) {
-            const selectedSolution = selectElement.value;
-            const error = errors.find(e => e.code === errorCode);
-
-            if (selectedSolution === error.solution) {
-                // Correct solution
-                teamProgress.resolved++;
-                teamProgress.workload--;
-                updateKanbanBoard();
-
-                // Log the resolution (for data collection)
-                console.log(`Resolved ${errorCode} with ${selectedSolution} (Correct)`);
-            } else if (selectedSolution === "Ignore") {
-                // Incorrect (or ignored)
-                console.log(`Ignored ${errorCode}`);
-            } else {
-                // Incorrect solution
-                console.log(`Incorrect solution for ${errorCode}: ${selectedSolution}`);
-            }
-        }
-
-        // Simulate AI chatbot response
-        function sendToAI(role) {
-            const inputId = `ai-input-${role}`;
-            const responseId = `ai-response-${role}`;
-            const input = document.getElementById(inputId).value.trim();
-
-            if (!input) return;
-
-            // Simulate AI response (rule-based)
-            const error = errors.find(e => e.code === input || e.description.includes(input));
-            const responseElement = document.getElementById(responseId);
-
-            if (error) {
-                responseElement.innerHTML = `
-                    <strong>Root Cause:</strong> ${error.rootCause}<br>
-                    <strong>Recommended Action:</strong> ${error.solution}<br>
-                    <strong>Confidence:</strong> 95%
-                `;
-            } else {
-                responseElement.innerHTML = "Error not found. Please check the error code or description.";
-            }
-        }
-
-        // Update Kanban board
-        function updateKanbanBoard() {
-            document.getElementById('kanban-resolved').innerHTML = `
-                <div class="kanban-card">✅ ${teamProgress.resolved} errors resolved</div>
-            `;
-            document.getElementById('kanban-workload').innerHTML = `
-                <div class="kanban-card">🔄 ${teamProgress.workload} errors remaining</div>
-            `;
-            document.getElementById('kanban-progress').innerHTML = `
-                <div class="kanban-card">Round ${currentRound}/${totalRounds}</div>
-            `;
-        }
-
-        // Start a new round
-        function startNewRound() {
-            if (currentRound < totalRounds) {
-                currentRound++;
-                document.getElementById('current-round').textContent = currentRound;
-
-                // Reset progress for the new round
-                teamProgress.resolved = 0;
-                teamProgress.workload = 10;
-                teamProgress.timeTaken = 0;
-
-                // Load new errors
-                loadErrors();
-                updateKanbanBoard();
-
-                // Clear AI responses
-                document.getElementById('ai-response-maintenance').innerHTML = '';
-                document.getElementById('ai-response-quality').innerHTML = '';
-                document.getElementById('ai-response-production').innerHTML = '';
-            } else {
-                alert("Experiment complete! Thank you for participating.");
-            }
-        }
-
-        // Initialize the experiment when the page loads
-        window.onload = initializeExperiment;
-    </script>
-</body>
-</html>
+// ---------- admin (?admin=1&team=T01) ----------
+function admin(){
+  document.body.innerHTML=`<h2>Admin · ${T}</h2><div class="card">Condition <select id="c"><option value="ai">Full AI</option><option value="noai">No AI</option></select> Bottleneck role <select id="b"><option>M</option><option>Q</option><option>P</option></select> <button onclick="setup()">Save (resets team)</button> <button onclick="rnd()">Random condition</button></div><div class="card"><button onclick="start()">Start</button> <button onclick="csv()">Download event log (CSV)</button></div><pre id="st"></pre>`;
+  db.ref('teams/'+T).on('value',s=>$('st').textContent=JSON.stringify(s.val(),null,1));
+}
+const setup=()=>db.ref('teams/'+T).set({cond:$('c').value,bn:$('b').value,started:false,round:0,created:TS});
+const rnd=()=>{const a=new Uint8Array(1);crypto.getRandomValues(a);$('c').value=a[0]%2?'ai':'noai'};
+const start=()=>db.ref('teams/'+T).update({started:true,round:1,t0:TS});
+function csv(){
+  db.ref('events/'+T).once('value',s=>{
+    const rows=Object.values(s.val()||{}).sort((a,b)=>a.ts-b.ts);
+    const cols=['ts','cts','pid','role','type','round','code','choice','correct','ms','q','found','hid'];
+    const t=[cols.join(',')].concat(rows.map(r=>cols.map(c=>JSON.stringify(r[c]??'')).join(','))).join('\n');
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=T+'.csv';a.click();
+  });
+}
+if(U.has('admin'))admin();
+else if(!'MQP'.includes(R||'x'))document.body.innerHTML='<p>Missing or invalid ?role=M|Q|P</p>';
+else init();
+</script></body></html>
