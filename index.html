@@ -6,14 +6,21 @@ body{font:16px system-ui,sans-serif;margin:0;padding:16px;background:#f6f6f4;col
 button,select,input{font:inherit;padding:6px 10px}
 .me{border:2px solid #2a6}.big{font-size:1.4em;font-weight:600}.mut{color:#777}
 </style></head><body>
+<div id="msg" class="card mut"></div>
 <div id="app"><div id="kan" class="row"></div><div id="task" class="card"></div><div id="tool" class="card"></div><div id="help"></div></div>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 // 1) PASTE YOUR FIREBASE CONFIG HERE
 const CFG={apiKey:"YOUR_KEY",authDomain:"YOUR.firebaseapp.com",databaseURL:"https://YOUR-default-rtdb.europe-west1.firebasedatabase.app",projectId:"YOUR"};
-firebase.initializeApp(CFG);
-const db=firebase.database(),TS=firebase.database.ServerValue.TIMESTAMP;
+const BAD=CFG.apiKey==='YOUR_KEY'||/YOUR/.test(CFG.databaseURL);
+let CONN=null,ERR='';
+function banner(){const m=document.getElementById('msg');if(!m)return;
+ m.textContent=BAD?'⚠ Firebase config not set in index.html':ERR?'⚠ '+ERR:(CONN?'Connected':'Not connected to database…')+(S.team&&S.team.cond?'':' · team '+T+' not set up: open ?admin=1&team='+T+', press Save, then Start')}
+window.onerror=m=>{ERR=m;banner()};
+if(!BAD)firebase.initializeApp(CFG);
+const db=BAD?null:firebase.database(),TS=BAD?0:firebase.database.ServerValue.TIMESTAMP;
+if(db)db.ref('.info/connected').on('value',s=>{CONN=s.val();banner()});
 const U=new URLSearchParams(location.search),T=U.get('team')||'T01',R=U.get('role'),PID=U.get('pid')||'';
 const RN={M:'Maintenance Technician',Q:'Quality Inspector',P:'Production Planner'};
 const N=10,ROUNDS=10,PEN=10000; // errors/round, rounds, wrong-answer penalty (ms)
@@ -30,6 +37,7 @@ const log=(type,d)=>db.ref('events/'+T).push(Object.assign({ts:TS,cts:Date.now()
 
 // ---------- participant ----------
 function init(){
+  banner();if(BAD)return;
   tool();kan();help();task();
   db.ref('teams/'+T).on('value',s=>{
     const v=s.val()||{};S.team=v;
@@ -37,8 +45,8 @@ function init(){
       S.round=v.round;S.idx=0;S.ok=0;S.rs=Date.now();
       if(S.round<=ROUNDS){log('round_start');next()}
     }
-    maybeAdvance();kan();help();task();tool();
-  });
+    maybeAdvance();kan();help();task();tool();banner();
+  },e=>{ERR='Database error: '+e.message+' (check Realtime Database rules)';banner()});
 }
 function next(){
   S.lock=false;
@@ -71,7 +79,9 @@ function ask(){if(!S.cur)return;const h=db.ref(`teams/${T}/help`).push({from:R,c
 function aid(id,c){db.ref(`teams/${T}/help/${id}`).update({status:'active',helper:R,t0:Date.now()});log('help_start',{hid:id,code:c})}
 function fin(id,c,t0){db.ref(`teams/${T}/help/${id}`).update({status:'done',t1:Date.now()});log('help_end',{hid:id,code:c,ms:Date.now()-t0})}
 
+let sigT='',sigL='';
 function task(){
+  const k=[S.team.started,S.round,S.idx,S.lock,S.cur].join();if(k===sigT)return;sigT=k;
   const t=S.team;let h;
   if(!t.started)h='Waiting for the experimenter to start…';
   else if(S.round>ROUNDS)h='<b class="big">Finished.</b> Please wait for instructions.';
@@ -81,7 +91,7 @@ function task(){
   $('task').innerHTML=h;
 }
 function tool(){
-  if($('q')&&document.activeElement===$('q'))return;
+  const k=S.team.cond+JSON.stringify(S.found);if(k===sigL||($('q')&&document.activeElement===$('q')))return;sigL=k;
   const ai=S.team.cond==='ai',f=S.found;
   $('tool').innerHTML=`<b>${ai?'AI assistant':'Manual'}</b> <input id="q" placeholder="Error code, e.g. E-105" value="${f?f.q:''}"> <button onclick="look()">Look up</button>`+
   (f?(f.none?'<p>Error not found.</p>':`<p>Root cause: ${f.cause}<br>Recommended action: <b>${f.act}</b>${ai?`<br>Confidence: ${f.conf}%`:''}</p>`):'');
@@ -103,6 +113,7 @@ function help(){
 
 // ---------- admin (?admin=1&team=T01) ----------
 function admin(){
+  if(BAD){document.body.innerHTML='<p>Firebase config not set in index.html</p>';return}
   document.body.innerHTML=`<h2>Admin · ${T}</h2><div class="card">Condition <select id="c"><option value="ai">Full AI</option><option value="noai">No AI</option></select> Bottleneck role <select id="b"><option>M</option><option>Q</option><option>P</option></select> <button onclick="setup()">Save (resets team)</button> <button onclick="rnd()">Random condition</button></div><div class="card"><button onclick="start()">Start</button> <button onclick="csv()">Download event log (CSV)</button></div><pre id="st"></pre>`;
   db.ref('teams/'+T).on('value',s=>$('st').textContent=JSON.stringify(s.val(),null,1));
 }
