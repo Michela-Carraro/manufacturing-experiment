@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manufacturing Team Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .role-section {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            flex: 1;
+        }
+        h2 {
+            color: #333;
+            text-align: center;
+        }
+        .error-list {
+            margin-top: 10px;
+        }
+        .error-item {
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .error-code {
+            font-weight: bold;
+            color: #d9534f;
+        }
+        .kanban-board {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .kanban-column {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 10px;
+        }
+        .kanban-card {
+            background-color: #e9ecef;
+            border: 1px solid #ccc;
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #5cb85c;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #4cae4c;
+        }
+        .ai-chatbot {
+            background-color: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        .chat-input {
+            width: 80%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .chat-button {
+            background-color: #2196f3;
+        }
+        .chat-response {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Manufacturing Team Simulation</h1>
+    <p><strong>Team:</strong> <span id="team-condition">Loading...</span> | <strong>Round:</strong> <span id="current-round">1</span>/10</p>
+
+    <div class="container">
+        <!-- Maintenance Technician -->
+        <div class="role-section">
+            <h2>🔧 Maintenance Technician</h2>
+            <div class="error-list" id="maintenance-errors">
+                <!-- Errors will be loaded here -->
+            </div>
+            <div class="ai-chatbot" id="ai-chatbot-maintenance" style="display: none;">
+                <h3>AI Chatbot</h3>
+                <input type="text" class="chat-input" id="ai-input-maintenance" placeholder="Enter error code or describe issue...">
+                <button class="chat-button" onclick="sendToAI('maintenance')">Get AI Recommendation</button>
+                <div class="chat-response" id="ai-response-maintenance"></div>
+            </div>
+            <button onclick="startNewRound()">Next Round</button>
+        </div>
+
+        <!-- Quality Inspector -->
+        <div class="role-section">
+            <h2>🔍 Quality Inspector</h2>
+            <div class="error-list" id="quality-errors">
+                <!-- Errors will be loaded here -->
+            </div>
+            <div class="ai-chatbot" id="ai-chatbot-quality" style="display: none;">
+                <h3>AI Chatbot</h3>
+                <input type="text" class="chat-input" id="ai-input-quality" placeholder="Enter error code or describe issue...">
+                <button class="chat-button" onclick="sendToAI('quality')">Get AI Recommendation</button>
+                <div class="chat-response" id="ai-response-quality"></div>
+            </div>
+        </div>
+
+        <!-- Production Planner -->
+        <div class="role-section">
+            <h2>📋 Production Planner</h2>
+            <div class="error-list" id="production-errors">
+                <!-- Errors will be loaded here -->
+            </div>
+            <div class="ai-chatbot" id="ai-chatbot-production" style="display: none;">
+                <h3>AI Chatbot</h3>
+                <input type="text" class="chat-input" id="ai-input-production" placeholder="Enter error code or describe issue...">
+                <button class="chat-button" onclick="sendToAI('production')">Get AI Recommendation</button>
+                <div class="chat-response" id="ai-response-production"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="kanban-board">
+        <h2>📊 Team Kanban Board</h2>
+        <div class="kanban-column">
+            <h3>Errors Resolved</h3>
+            <div id="kanban-resolved"></div>
+        </div>
+        <div class="kanban-column">
+            <h3>Current Workload</h3>
+            <div id="kanban-workload"></div>
+        </div>
+        <div class="kanban-column">
+            <h3>Team Progress</h3>
+            <div id="kanban-progress"></div>
+        </div>
+    </div>
+
+    <script>
+        // Experiment condition: Full-AI or No-AI
+        const teamCondition = new URLSearchParams(window.location.search).get('condition') || 'No-AI';
+        document.getElementById('team-condition').textContent = teamCondition;
+
+        // Error dataset (simplified for demo)
+        const errors = [
+            { code: "ALM-404", description: "High vibration in spindle", rootCause: "Worn bearing", solution: "Replace bearing" },
+            { code: "ERR-500", description: "Overheating in motor", rootCause: "Faulty cooling fan", solution: "Replace cooling fan" },
+            { code: "FAIL-202", description: "Inconsistent product dimensions", rootCause: "Misaligned caliper", solution: "Recalibrate machine" },
+            { code: "STOP-999", description: "Unexpected shutdown", rootCause: "Electrical short", solution: "Check wiring" },
+            { code: "NOISE-777", description: "Loud grinding noise", rootCause: "Loose gear", solution: "Tighten gear" },
+            { code: "LEAK-303", description: "Hydraulic fluid leak", rootCause: "Cracked hose", solution: "Replace hose" },
+            { code: "SLOW-101", description: "Reduced spindle speed", rootCause: "Clogged filter", solution: "Clean filter" },
+            { code: "JAM-888", description: "Material jam in feeder", rootCause: "Misaligned feeder", solution: "Realign feeder" },
+            { code: "ERR-404", description: "Sensor failure", rootCause: "Dirty sensor", solution: "Clean sensor" },
+            { code: "CRASH-200", description: "System crash", rootCause: "Software bug", solution: "Restart system" }
+        ];
+
+        // Current round
+        let currentRound = 1;
+        const totalRounds = 10;
+
+        // Team progress tracking
+        let teamProgress = {
+            resolved: 0,
+            workload: 10, // 10 errors per round
+            timeTaken: 0
+        };
+
+        // Initialize the experiment
+        function initializeExperiment() {
+            if (teamCondition === 'Full-AI') {
+                // Show AI chatbots for all roles
+                document.getElementById('ai-chatbot-maintenance').style.display = 'block';
+                document.getElementById('ai-chatbot-quality').style.display = 'block';
+                document.getElementById('ai-chatbot-production').style.display = 'block';
+            }
+
+            // Load errors for each role
+            loadErrors();
+            updateKanbanBoard();
+        }
+
+        // Load errors for each role
+        function loadErrors() {
+            const shuffledErrors = [...errors].sort(() => 0.5 - Math.random()).slice(0, 10);
+
+            // Assign errors to roles (with one "slow" error for each role)
+            document.getElementById('maintenance-errors').innerHTML = '';
+            document.getElementById('quality-errors').innerHTML = '';
+            document.getElementById('production-errors').innerHTML = '';
+
+            shuffledErrors.forEach((error, index) => {
+                const errorElement = document.createElement('div');
+                errorElement.className = 'error-item';
+                errorElement.innerHTML = `
+                    <div class="error-code">${error.code}</div>
+                    <div>${error.description}</div>
+                    <div>
+                        <select onchange="resolveError(this, '${error.code}')">
+                            <option value="">Select action...</option>
+                            <option value="${error.solution}">${error.solution} (Correct)</option>
+                            <option value="Recalibrate machine">Recalibrate machine</option>
+                            <option value="Replace motor">Replace motor</option>
+                            <option value="Ignore">Ignore</option>
+                        </select>
+                    </div>
+                `;
+
+                // Assign to roles (rotating for simplicity)
+                if (index % 3 === 0) {
+                    document.getElementById('maintenance-errors').appendChild(errorElement);
+                } else if (index % 3 === 1) {
+                    document.getElementById('quality-errors').appendChild(errorElement);
+                } else {
+                    document.getElementById('production-errors').appendChild(errorElement);
+                }
+            });
+        }
+
+        // Resolve an error
+        function resolveError(selectElement, errorCode) {
+            const selectedSolution = selectElement.value;
+            const error = errors.find(e => e.code === errorCode);
+
+            if (selectedSolution === error.solution) {
+                // Correct solution
+                teamProgress.resolved++;
+                teamProgress.workload--;
+                updateKanbanBoard();
+
+                // Log the resolution (for data collection)
+                console.log(`Resolved ${errorCode} with ${selectedSolution} (Correct)`);
+            } else if (selectedSolution === "Ignore") {
+                // Incorrect (or ignored)
+                console.log(`Ignored ${errorCode}`);
+            } else {
+                // Incorrect solution
+                console.log(`Incorrect solution for ${errorCode}: ${selectedSolution}`);
+            }
+        }
+
+        // Simulate AI chatbot response
+        function sendToAI(role) {
+            const inputId = `ai-input-${role}`;
+            const responseId = `ai-response-${role}`;
+            const input = document.getElementById(inputId).value.trim();
+
+            if (!input) return;
+
+            // Simulate AI response (rule-based)
+            const error = errors.find(e => e.code === input || e.description.includes(input));
+            const responseElement = document.getElementById(responseId);
+
+            if (error) {
+                responseElement.innerHTML = `
+                    <strong>Root Cause:</strong> ${error.rootCause}<br>
+                    <strong>Recommended Action:</strong> ${error.solution}<br>
+                    <strong>Confidence:</strong> 95%
+                `;
+            } else {
+                responseElement.innerHTML = "Error not found. Please check the error code or description.";
+            }
+        }
+
+        // Update Kanban board
+        function updateKanbanBoard() {
+            document.getElementById('kanban-resolved').innerHTML = `
+                <div class="kanban-card">✅ ${teamProgress.resolved} errors resolved</div>
+            `;
+            document.getElementById('kanban-workload').innerHTML = `
+                <div class="kanban-card">🔄 ${teamProgress.workload} errors remaining</div>
+            `;
+            document.getElementById('kanban-progress').innerHTML = `
+                <div class="kanban-card">Round ${currentRound}/${totalRounds}</div>
+            `;
+        }
+
+        // Start a new round
+        function startNewRound() {
+            if (currentRound < totalRounds) {
+                currentRound++;
+                document.getElementById('current-round').textContent = currentRound;
+
+                // Reset progress for the new round
+                teamProgress.resolved = 0;
+                teamProgress.workload = 10;
+                teamProgress.timeTaken = 0;
+
+                // Load new errors
+                loadErrors();
+                updateKanbanBoard();
+
+                // Clear AI responses
+                document.getElementById('ai-response-maintenance').innerHTML = '';
+                document.getElementById('ai-response-quality').innerHTML = '';
+                document.getElementById('ai-response-production').innerHTML = '';
+            } else {
+                alert("Experiment complete! Thank you for participating.");
+            }
+        }
+
+        // Initialize the experiment when the page loads
+        window.onload = initializeExperiment;
+    </script>
+</body>
+</html>
